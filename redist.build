@@ -1,0 +1,186 @@
+define archive: file
+archive{*}: extension = tar
+
+define extract: group
+
+# build2 already knows about libi on Windows.
+if ($cc.target.class != 'windows')
+{
+  define libi: file
+}
+
+# Download platform-specific archive directly from a URL built from the
+# committed manifest.json. The download URL redirects to a short-lived
+# tokenized URL, hence --location.
+# $<[0]: manifest.json (local config)
+archive{~'/(.+)/'}:
+{{
+  pkg   = $project_name.variable($project)
+  cache = [dir_path] $(config.$(pkg).cache)
+  tar   = [path] $cache/$leaf($path($>))
+  part  = [path] $(tar).part
+
+  local_j   = ($<[0])
+  local_cfg = [json] $json.load($path($local_j))
+
+  platforms = [json_object] ($local_cfg["platforms"])
+  plat_cfg  = [json] ($platforms["$cc.target.cpu-$cc.target.class"])
+  rel_path  = [string] ($plat_cfg["relativePath"])
+  base_url  = [string] ($local_cfg["baseUrl"])
+
+  url = "$(base_url)/$(rel_path)"
+
+  depdb hash $local_cfg
+  diag curl $url -> $>
+
+  mkdir --no-cleanup -p $directory($part)
+  bsdtar -tf $tar >- 2>&1 || \
+    curl -\# --fail --location --output $part "$url"
+  test -f $part && \
+    rm -f $tar && mv $part $tar &!$tar || true
+  rm -f $path($>) && \
+    ln --symbolic $tar $path($>)
+  touch $path($>)
+}}
+
+# Per-package extra exclusions for extraction (override after sourcing this file).
+extract_exclude = [cmdline]
+
+# Linux rpath for extracted executables, empty to leave them alone (override
+# after sourcing this file).
+extract_bin_rpath = [string] ''
+
+# Names of the extracted executables that get extract_bin_rpath (override
+# after sourcing this file).
+extract_bin_rpath_exes = [strings]
+
+# Extract archive into $out_base. The Windows archive has no root directory
+# and the Linux one has ./ as its root, so there is nothing to strip.
+extract{~'/(.+)/'}:
+{{
+  n = $name($>[0])
+  o = $posix_representation($directory($>[0]))
+  a = $posix_representation($path($<[0]))
+  d = "$o$(n).files"
+
+  pattern = [cmdline] \
+    --exclude "*/doc/*" \
+    --exclude "redist/include/*" \
+    --exclude "redist/NvPerfUtility/build/*" \
+    --exclude "redist/NvPerfUtility/data/*" \
+    $extract_exclude \
+    "NvPerf/*" "redist/*"
+
+  # grep is not a build2 builtin, so the directory filter is in the sed.
+  depdb dyndep \
+    --dyn-target \
+    --target-cwd "$o" \
+    --target-what 'fetched binaries' \
+    --target-default-type 'file' \
+    --target-extension-type '=file' \
+    --target-extension-type 'h=file' \
+    --target-extension-type 'so=file' \
+    --target-extension-type 'dll=file' \
+    --target-extension-type 'lib=file' \
+    --target-extension-type 'exe=file' \
+    --format lines \
+    --file "$d" \
+    -- \
+      bsdtar -tf "$a" $pattern \
+      | sed -n -e 's%^(\./)?(.*[^/])$%\2%p' >$d
+
+  diag bsdtar $< $filter_out($>, group)
+  bsdtar -C "$o" -xmf "$a" $pattern
+
+  if ($cc.target.class == 'linux')
+  {
+    if (!$empty($extract_bin_rpath))
+    {
+      find "$o" -type f | set -n bins [paths]
+
+      for b: $bins
+      {
+        if $find($extract_bin_rpath_exes, $string($leaf($b)))
+          patchelf --set-rpath "$extract_bin_rpath" $b
+      }
+    }
+  }
+
+  touch $d
+}}
+
+# No registered rule matches a pre-built exe that has no source prerequisites
+# and does not yet exist on disk. This ad-hoc regex pattern rule provides an
+# explicit perform(update)/perform(clean) entry point for all path-qualified
+# exe targets so build2 can attach the operation to them.
+#
+# Fail if the file is missing, because touch would otherwise create an
+# empty executable that clobbers the real one when installed into a shared
+# prefix.
+#
+exe{~'/(.+)/'}:
+{{
+  diag import $> $<
+
+  test -f $path($>) || exit "no such extracted file, check this executable's path in package.json"
+
+  touch $path($>)
+}}
+
+# Linux: install versioned SONAME companions alongside the base .so.
+# build2's default install only copies the base file. This also copies any
+# real versioned binaries (e.g. libnvperf_grfx_host.so.2026.3.0) and
+# recreates versioned symlinks pointing at the installed binary. Uninstall
+# removes the same files.
+#
+if ($cc.target.class != 'windows')
+{
+  libs{~'/lib(.+)/'}:
+  % install
+  {{
+    dst = $install.resolve($install.lib, [dir_path])
+
+    diag install $>
+
+    mkdir --no-cleanup -p "$dst"
+
+    for src : [paths] $path($>)
+    {
+      find "$directory($src)" -maxdepth 1 -name "$leaf($src).*" -type f \
+        | set real_files [paths]
+      find "$directory($src)" -maxdepth 1 -name "$leaf($src).*" -type l \
+        | set sym_files [paths]
+
+      if (!$empty($real_files))
+      {
+        real = $front($real_files)
+        cp --no-cleanup "$real" "$dst/"
+        rm -f "$dst/$leaf($src)"
+        ln --no-cleanup -s "$leaf($real)" "$dst/$leaf($src)"
+        for s : $sym_files
+        {
+          rm -f "$dst/$leaf($s)"
+          ln --no-cleanup -s "$leaf($real)" "$dst/$leaf($s)"
+        }
+      }
+      else
+        cp --no-cleanup "$src" "$dst/"
+    }
+  }}
+  % uninstall
+  {{
+    dst = $install.resolve($install.lib, [dir_path])
+
+    diag uninstall $>
+
+    for src : [paths] $path($>)
+    {
+      find "$directory($src)" -maxdepth 1 -name "$leaf($src).*" \
+        | set ver_files [paths]
+
+      rm -f "$dst/$leaf($src)"
+      for f : $ver_files
+        rm -f "$dst/$leaf($f)"
+    }
+  }}
+}
