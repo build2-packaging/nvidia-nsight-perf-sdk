@@ -3,4 +3,7 @@ $out_root/
   include libnvperf/
 }
 
-export $out_root/libnvperf/$import.target
+if ($target_type($import.target) == exe)
+  export $out_root/libnvperf/NvPerf/bin/x64/$import.target
+else
+  export $out_root/libnvperf/$import.target

@@ -1,0 +1,9 @@
+# Extracted SDK archive contents (see redist.build) and its forwarded-config
+# backlinks.
+#
+/NvPerf/
+/redist/
+
+# Downloaded archive symlink.
+#
+/nvperf-*

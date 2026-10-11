@@ -1,25 +1,303 @@
-intf_libs = # Interface dependencies.
-#import xxxx_libs += libhello%lib{hello}
+define [see_through] import: group
 
-lib{nvperf}: hxx{**} $intf_libs
+name = $string.replace($project, 'lib', '')
 
-# Build options.
+source redist.build
+
+# NVIDIA ships GpuDiag with no RPATH/RUNPATH and it dlopens the host
+# library by bare name. ../lib is the install tree, ../../lib/x64 the
+# build tree.
+extract_bin_rpath = '$ORIGIN/../lib:$ORIGIN/../../lib/x64'
+extract_bin_rpath_exes = GpuDiag
+
+manifest_json = [json_object] $json.load($src_base/manifest.json)
+package_ver   = "$(version.major).$(version.minor).$(version.patch)"
+
+hdr_dirs = [dir_paths]
+pub_hdrs = [strings]
+for d: [json_array] ($manifest_json["includeDirs"])
+{
+  dir = [string] $d
+  hdr_dirs += "$out_base/$dir/"
+  pub_hdrs += "-I$out_base/$dir"
+}
+
+# The installed headers keep their layout below include/$project/ (see
+# the end of this file), so let the generated pkg-config files search
+# there, as the exported poptions do in the build tree.
 #
-cxx.poptions =+ "-I$out_root" "-I$src_root"
+cxx.pkgconfig.include = include/$project/
 
-# Export options.
+supported = false
+for plat: [json_object] ($manifest_json["platforms"])
+{
+  plat_key = $member_name($plat)
+  plat_val = $member_value($plat)
+  enabled  = [bool] ($cc.target.cpu-$cc.target.class == $plat_key)
+  archive{$name-$plat_key-$package_ver}: $src_base/manifest.json: include = $enabled
+  extract{$name}: archive{$name-$plat_key-$package_ver}: include = $enabled
+
+  # The archive ships every architecture. Only extract this architecture's
+  # files and also export its include directory.
+  #
+  if $enabled
+  {
+    supported = true
+
+    for d: [json_array] ($plat_val["includeDirs"])
+    {
+      dir = [string] $d
+      sub = $leaf([dir_path] "$out_base/$dir/", [dir_path] "$out_base/NvPerf/include/")
+      pub_hdrs += "-I$out_base/$dir"
+      cxx.pkgconfig.include += "include/$project/$sub"
+    }
+
+    for x: [json_array] ($plat_val["exclude"])
+    {
+      pat = [string] $x
+      extract_exclude += --exclude "$pat"
+    }
+  }
+}
+
+import{$name-headers}: extract{$name}: update = match
+import{$name-legals}:  extract{$name}: update = match
+
+import{$name-legals}:
+{{
+  o = $directory($>[0])
+  d = $o/$name($>[0]).files
+
+  legal = [paths] \
+    "$out_base/redist/NVIDIA Nsight Perf SDK License \(28Sept2022).pdf" \
+    "$out_base/redist/NvPerfUtility/LICENSE" \
+    "$out_base/redist/NvPerfUtility/CREDITS.md"
+
+  depdb dyndep \
+    --dyn-target \
+    --target-cwd "$o" \
+    --target-what 'imported files' \
+    --target-default-type 'legal' \
+    --target-extension-type '=legal' \
+    --format lines \
+    --file $d \
+    -- \
+      echo $regex.merge($legal, '(.+)', '\1\n') >$d
+
+  diag import $>
+
+  for t : $filter_out($>, group)
+  {
+    touch $path($t)
+  }
+}}
+
+import{$name-headers}:
+{{
+  o = $directory($>[0])
+  d = $o/$name($>[0]).files
+
+  find $hdr_dirs -type f -name "*" \
+    | set -n f [paths]
+
+  depdb dyndep \
+    --dyn-target \
+    --target-cwd "$o" \
+    --target-what 'headers' \
+    --target-default-type 'hxx' \
+    --target-extension-type '=hxx' \
+    --target-extension-type 'h=hxx' \
+    --format lines \
+    -- echo $regex.merge($f, '(.+)', '\1\n')
+
+  diag import $>
+
+  for f : $filter($>, hxx)
+  {
+    touch $path($f)
+  }
+}}
+
+# Headers-only interface for loading the host library at runtime through
+# nvperf_host_impl.h (upstream's NvPerf CMake target), which uses dlopen()
+# on Linux.
 #
+./: lib{nvperf}:
+{
+  include = $supported
+  clean   = false
+}
+[rule_hint=cxx] \
+lib{nvperf}: import{$name-legals} import{$name-headers}: \
+            extract{$name}:
+{
+  include = $supported
+  update  = match
+}
+
 lib{nvperf}:
 {
-  cxx.export.poptions = "-I$out_root" "-I$src_root"
-  cxx.export.libs = $intf_libs
+  cc.type            = cc
+  cc.export.poptions = $pub_hdrs
 }
+
+if ($cc.target.class != 'windows')
+  lib{nvperf}: cc.export.libs = -ldl
+
+./: json{package}
+json = [json_object] $json.load($src_base/package.json)
+for plat: [json_object] ($json["platforms"])
+{
+  plat_key = $member_name($plat)
+  enabled  = [bool] ($cc.target.cpu-$cc.target.class == $plat_key)
+  plat_val = [json_object] $member_value($plat)
+
+  for m: [json_object] ($plat_val["libs"])
+  {
+    n = $member_name($m)
+    v = [json_object] ($member_value($m))
+    host_dir = [dir_path]
+
+    ./: libs{$n}:
+    {
+      include = $enabled
+      clean   = false
+    }
+    [rule_hint=cxx.link] \
+    libs{$n}: import{$name-legals} import{$name-headers}: \
+              extract{$name}:
+    {
+      include = $enabled
+      update  = match
+    }
+
+    for b: [json_array] ($v["linked"])
+    {
+      dll  = [path] $out_base/($b["dll"])
+      libi = [paths]
+      for x: [json_array] ($b["libs"])
+        libi += [paths] $out_base/$x
+
+      <libs{$dll} libi{$libi}>: extract{$name}: include = $enabled
+      libs{$n}: libs{$dll}: include = $enabled
+      if $enabled
+      {
+        host_dir = [dir_path] $directory($dll)
+        libs{$n}:
+        {
+          cc.export.libs =+ libs{$dll}
+        }
+      }
+    }
+
+    for s: [json_array] ($v["shared"])
+    {
+      so = [path] $out_base/$s
+      <libs{$so}>: extract{$name}: include = $enabled
+      libs{$n}: libs{$so}: include = $enabled
+      if $enabled
+      {
+        host_dir = [dir_path] $directory($so)
+        if ($cc.target.class != 'windows')
+        {
+          libs{$n}:
+          {
+            cc.export.libs =+ libs{$so}
+          }
+        }
+      }
+    }
+
+    for a: [json_array] ($v["archives"])
+    {
+      ar = [path] $out_base/$a
+      <liba{$ar}>: extract{$name}: include = $enabled
+      libs{$n}: liba{$ar}: include = $enabled
+      if $enabled
+      {
+        libs{$n}: cc.export.libs += liba{$ar}
+      }
+    }
+
+    for d2: [json_array] ($v["depends"])
+    {
+      dep = [name] $d2
+      libs{$n}: libs{$dep}: include = $enabled
+      if $enabled
+      {
+        libs{$n}: cc.export.libs += libs{$dep}
+      }
+    }
+
+    libs{$n}:
+    {
+      cc.type            = cc
+      cc.export.poptions = $pub_hdrs
+    }
+
+    # Directory of the packaged host library. Consumers that load it
+    # at runtime use this with NVPW_SetLibraryLoadPaths() or, on
+    # POSIX, bin.rpath. Exported on every platform, with empty paths where
+    # the SDK is not available, so that importing it still configures.
+    #
+    libs{$n}: export.metadata = 1 libnvperf
+
+    if ($enabled || $null($(libs{$n}: libnvperf.rpath)))
+    {
+      libs{$n}:
+      {
+        libnvperf.rpath = [dir_path] $host_dir
+        libnvperf.rpath.for_install = ($enabled && !$null($install.root) \
+          ? $install.resolve($cc.target.class == 'windows' \
+              ? [dir_path] bin/ \
+              : [dir_path] lib/) \
+          : [dir_path])
+      }
+    }
+  }
+
+  for m: [json_object] ($plat_val["exes"])
+  {
+    v = [json_object] ($member_value($m))
+    p = [string] ($v["path"])
+
+    # package.json leaves out the extension of the prebuilt executables so
+    # that each one is a single target that its import resolves to. Since
+    # no link rule assigns it, add it here.
+    #
+    if ($cc.target.class == 'windows')
+      p = "$(p).exe"
+
+    ./: exe{$p}: include = $enabled
+    exe{$p}: import{$name-headers}: extract{$name}: include = $enabled
+
+    # The tools load the host library at runtime rather than linking it.
+    #
+    for d2: [json_array] ($v["depends"])
+    {
+      dep = [name] $d2
+      exe{$p}: libs{$dep}:
+      {
+        include = ($enabled ? adhoc : false)
+        clean = false
+      }
+    }
+  }
+}
+
+exe{*}: install = bin/
 
 # Install into the libnvperf/ subdirectory of, say, /usr/include/
 # recreating subdirectories.
 #
-hxx{*}:
+NvPerf/include/hxx{**}:
 {
-  install         = include/libnvperf/
+  install         = include/$project/
+  install.subdirs = true
+}
+
+redist/NvPerfUtility/include/hxx{**}:
+{
+  install         = include/$project/
   install.subdirs = true
 }
