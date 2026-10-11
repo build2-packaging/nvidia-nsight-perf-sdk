@@ -1,6 +1,7 @@
 # Test executables.
 #
 driver
+grfx-host
 
 # Testscript output directories (can be symlinks).
 #

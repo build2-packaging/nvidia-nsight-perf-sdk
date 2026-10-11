@@ -1,3 +1,31 @@
 import libs = libnvperf%lib{nvperf}
+import! [metadata, rule_hint=cxx.link] host_meta = libnvperf%libs{nvperf_grfx_host}
 
-exe{driver}: {hxx cxx}{**} $libs testscript{**}
+# Make sure the executables are importable.
+#
+import gpudiag           = libnvperf%exe{GpuDiag}
+import metricsenumerator = libnvperf%exe{MetricsEnumerator}
+import monitoring        = libnvperf%exe{Monitoring}
+
+testscript{GpuDiag}@./:           test = $gpudiag
+testscript{MetricsEnumerator}@./: test = $metricsenumerator
+testscript{Monitoring}@./:        test = $monitoring
+
+./: testscript{GpuDiag}@./           $gpudiag
+./: testscript{MetricsEnumerator}@./ $metricsenumerator
+./: testscript{Monitoring}@./        $monitoring
+
+./: exe{driver}:    cxx{driver}    $libs
+./: exe{grfx-host}: cxx{grfx-host} $host_meta
+
+# Point the runtime-load test at the packaged host library without
+# linking it. bin.rpath is POSIX-only, so driver.cpp also calls
+# NVPW_SetLibraryLoadPaths().
+#
+exe{driver}:
+{
+  cxx.poptions += "-DLIBNVPERF_HOST_DIR=\"$posix_string($($host_meta: libnvperf.rpath))\""
+}
+
+if ($cxx.target.class != 'windows')
+  exe{driver}: bin.rpath += $($host_meta: libnvperf.rpath)

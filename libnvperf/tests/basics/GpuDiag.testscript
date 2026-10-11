@@ -1,0 +1,11 @@
+: help
+:
+$* --help >! 2>!
+
+: load
+:
+: Check that the tool finds the host library. Without a GPU it fails right
+: after loading it, so ignore its exit status.
+:
+$* >! 2>=err || true;
+sed -n -e 's/.*(NVPA_STATUS_NOT_LOADED).*/\1/p' err
