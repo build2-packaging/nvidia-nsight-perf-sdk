@@ -9,6 +9,11 @@ using cxx
 hxx{*}: extension = h
 cxx{*}: extension = cpp
 
+legal{*}: backlink = false
+
+config [dir_path] config.libnvperf.cache ?= \
+  (!$null($config.nvperf.cache) ? $config.nvperf.cache : $out_root)
+
 # The test target for cross-testing (running tests under Wine, etc).
 #
 test.target = $cxx.target
