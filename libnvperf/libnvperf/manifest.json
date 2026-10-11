@@ -1,0 +1,16 @@
+{
+  "baseUrl": "https://developer.nvidia.com/downloads/assets/tools/secure/nsight-perf-sdk",
+  "includeDirs": ["NvPerf/include", "redist/NvPerfUtility/include"],
+  "platforms": {
+    "x86_64-windows": {
+      "relativePath": "2026_3/NVIDIA_Nsight_Perf_SDK_2026.3_Public_Windows.zip",
+      "includeDirs": ["NvPerf/include/windows-desktop-x64"],
+      "exclude": ["*/a64/*", "*-a64/*"]
+    },
+    "x86_64-linux": {
+      "relativePath": "2026_3/NVIDIA_Nsight_Perf_SDK_2026.3_Public_Linux.tar.gz",
+      "includeDirs": ["NvPerf/include/linux-desktop-x64"],
+      "exclude": ["*/a64/*", "*-a64/*"]
+    }
+  }
+}

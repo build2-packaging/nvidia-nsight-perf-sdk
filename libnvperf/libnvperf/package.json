@@ -1,0 +1,61 @@
+{
+  "platforms": {
+    "x86_64-windows": {
+      "libs": {
+        "nvperf_grfx_host": {
+          "linked": [
+            {
+              "dll": "NvPerf/bin/x64/nvperf_grfx_host.dll",
+              "libs": [
+                "NvPerf/bin/x64/nvperf_grfx_host.lib"
+              ]
+            }
+          ],
+          "shared": [],
+          "archives": [],
+          "depends": []
+        }
+      },
+      "exes": {
+        "GpuDiag": {
+          "path": "NvPerf/bin/x64/GpuDiag",
+          "depends": ["nvperf_grfx_host"]
+        },
+        "MetricsEnumerator": {
+          "path": "NvPerf/bin/x64/MetricsEnumerator",
+          "depends": ["nvperf_grfx_host"]
+        },
+        "Monitoring": {
+          "path": "NvPerf/bin/x64/Monitoring",
+          "depends": ["nvperf_grfx_host"]
+        }
+      }
+    },
+    "x86_64-linux": {
+      "libs": {
+        "nvperf_grfx_host": {
+          "linked": [],
+          "shared": [
+            "NvPerf/lib/x64/libnvperf_grfx_host.so"
+          ],
+          "archives": [],
+          "depends": []
+        }
+      },
+      "exes": {
+        "GpuDiag": {
+          "path": "NvPerf/bin/x64/GpuDiag",
+          "depends": ["nvperf_grfx_host"]
+        },
+        "MetricsEnumerator": {
+          "path": "NvPerf/bin/x64/MetricsEnumerator",
+          "depends": ["nvperf_grfx_host"]
+        },
+        "Monitoring": {
+          "path": "NvPerf/bin/x64/Monitoring",
+          "depends": ["nvperf_grfx_host"]
+        }
+      }
+    }
+  }
+}
