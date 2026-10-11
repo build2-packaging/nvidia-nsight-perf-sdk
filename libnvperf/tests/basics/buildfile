@@ -29,3 +29,19 @@ exe{driver}:
 
 if ($cxx.target.class != 'windows')
   exe{driver}: bin.rpath += $($host_meta: libnvperf.rpath)
+
+# The upstream headers leave out trailing members in the parameter struct
+# initializers, cast the functions they look up at runtime to the declared
+# function types, and use Microsoft-specific enum values and warning
+# pragmas, which GCC and Clang warn about with -Wall -Wextra -pedantic.
+#
+if ($cxx.id == 'gcc')
+{
+  cxx.coptions += -Wno-missing-field-initializers
+
+  if ($cxx.target.class == 'windows')
+    cxx.coptions += -Wno-unknown-pragmas
+}
+elif ($cxx.id == 'clang' || $cxx.id == 'msvc-clang')
+  cxx.coptions += -Wno-missing-field-initializers -Wno-cast-function-type \
+                  -Wno-deprecated-copy -Wno-microsoft-enum-value
