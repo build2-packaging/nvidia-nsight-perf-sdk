@@ -1,15 +1,17 @@
 : 1
 name: libnvperf
-version: 0.1.0-a.0.z
+version: 2026.3.0-a.0.z
 type: lib,binless
 language: c++
-project: build2-nvidia-nsight-perf-sdk
-summary: nvperf C++ library
-license: other: proprietary ; Not free/open source.
+project: nvidia-nsight-perf-sdk
+summary: NVIDIA Nsight Perf SDK GPU performance metrics library
+topics: nvidia, nsight, gpu, profiling, performance counters
+license: other: NVIDIA Nsight Perf SDK License, Apache-2.0 ; NVIDIA Nsight Perf SDK License for the SDK, Apache License 2.0 for NvPerfUtility.
 package-description-file: PACKAGE-README.md
-url: https://example.org/upstream
-email: upstream@example.org
-package-url: https://github.com/build2-packaging/build2-nvidia-nsight-perf-sdk
+url: https://developer.nvidia.com/nsight-perf-sdk
+email: NSightPerf@nvidia.com
+package-url: https://github.com/build2-packaging/nvidia-nsight-perf-sdk
 package-email: packaging@build2.org ; Mailing list.
+builds: none ; Downloads the large pre-built SDK archive from NVIDIA.
 depends: * build2 >= 0.18.0
 depends: * bpkg >= 0.18.0
