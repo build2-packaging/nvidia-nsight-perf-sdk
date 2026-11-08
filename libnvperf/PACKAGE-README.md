@@ -54,8 +54,8 @@ package does not provide.
 directly, with the same headers.
 
 `exe{GpuDiag}`, `exe{MetricsEnumerator}`, and `exe{Monitoring}` are the
-pre-built SDK tools. On Linux they find `libnvperf_grfx_host.so` through
-`LD_LIBRARY_PATH`, as in upstream.
+pre-built SDK tools. On Linux they find `libnvperf_grfx_host.so` without
+`LD_LIBRARY_PATH`.
 
 
 ## Configuration variables

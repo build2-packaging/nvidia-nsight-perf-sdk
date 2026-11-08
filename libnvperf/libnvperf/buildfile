@@ -151,6 +151,8 @@ for plat: [json_object] ($json["platforms"])
   plat_key = $member_name($plat)
   enabled  = [bool] ($cc.target.cpu-$cc.target.class == $plat_key)
   plat_val = [json_object] $member_value($plat)
+  host_so   = [path]
+  host_link = [paths]
 
   for m: [json_object] ($plat_val["libs"])
   {
@@ -195,6 +197,7 @@ for plat: [json_object] ($json["platforms"])
       so = [path] $out_base/$s
       <libs{$so}>: extract{$name}: include = $enabled
       libs{$n}: libs{$so}: include = $enabled
+      host_so = [path] $so
       if $enabled
       {
         host_dir = [dir_path] $directory($so)
@@ -268,6 +271,56 @@ for plat: [json_object] ($json["platforms"])
     if ($cc.target.class == 'windows')
       p = "$(p).exe"
 
+    # MetricsEnumerator and Monitoring call NVPW_SetLibraryLoadPaths()
+    # with only their own directory, so add a same-named libs{} next to
+    # them.
+    #
+    if (!$empty($host_so) && $empty($host_link))
+    {
+      host_link = [paths] $directory([path] $p)/$leaf($host_so)
+
+      libs{$host_link}:
+      {
+        dist    = false
+        install = bin/
+      }
+      libs{$host_link}:
+      % update
+      {{
+        src = $path($<)
+        dst = $path($>)
+        diag ln $>
+        mkdir --no-cleanup -p "$directory($dst)"
+        rm -f "$dst"
+        ln -s $relative($src, $directory($dst)) "$dst"
+      }}
+      % install
+      {{
+        diag ln $>
+
+        dst_dir = $install.resolve($install.bin, [dir_path])
+        src = [path] $install.resolve($install.lib, $install.bin)/$leaf($path($<))
+        dst = [path] $dst_dir/$leaf($path($>))
+
+        mkdir --no-cleanup -p "$dst_dir"
+        rm -f "$dst"
+        ln --no-cleanup -s $src "$dst"
+      }}
+      % uninstall
+      {{
+        diag rm $>
+        dst_dir = $install.resolve($install.bin, [dir_path])
+        dst = [path] $dst_dir/$leaf($path($>))
+        rm -f "$dst"
+
+        # The tools are uninstalled first, so remove bin/ if this was last.
+        #
+        find "$dst_dir" -mindepth 1 -maxdepth 1 | set -n left [paths]
+        if $empty($left)
+          rmdir "$dst_dir"
+      }}
+    }
+
     ./: exe{$p}: include = $enabled
     exe{$p}: import{$name-headers}: extract{$name}: include = $enabled
 
@@ -281,6 +334,27 @@ for plat: [json_object] ($json["platforms"])
         include = ($enabled ? adhoc : false)
         clean = false
       }
+    }
+
+    # GpuDiag gets a RUNPATH instead, see extract_bin_rpath.
+    #
+    exe{$p}: libs{$host_link}: \
+      include = ($enabled && \
+                 !$empty($host_link) && \
+                 !$find($extract_bin_rpath_exes, $member_name($m)) \
+                 ? adhoc : false)
+  }
+
+  # Outside of the above if-block to keep the build graph
+  # configuration-independent. There is no link without a shared host
+  # library.
+  #
+  for l: $host_link
+  {
+    libs{$l}: libs{$host_so}:
+    {
+      include = $enabled
+      clean   = false
     }
   }
 }
