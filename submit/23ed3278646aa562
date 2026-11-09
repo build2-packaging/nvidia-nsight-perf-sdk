@@ -1,0 +1,9 @@
+: 1
+name: libnvperf
+version: 2026.3.0
+type: lib,binless
+language: c++
+project: nvidia-nsight-perf-sdk
+summary: NVIDIA Nsight Perf SDK GPU performance metrics library
+license: other: NVIDIA Nsight Perf SDK License, Apache-2.0; NVIDIA Nsight\
+ Perf SDK License for the SDK, Apache License 2.0 for NvPerfUtility.
