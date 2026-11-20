@@ -1,6 +1,6 @@
 : 1
 name: libnvperf
-version: 2026.3.0
+version: 2026.3.0+1
 type: lib,binless
 language: c++
 project: nvidia-nsight-perf-sdk
