@@ -253,7 +253,8 @@ for plat: [json_object] ($json["platforms"])
         libnvperf.rpath.for_install = ($enabled && !$null($install.root) \
           ? $install.resolve($cc.target.class == 'windows' \
               ? [dir_path] bin/ \
-              : [dir_path] lib/) \
+              : [dir_path] lib/, \
+              [dir_path]) \
           : [dir_path])
       }
     }
